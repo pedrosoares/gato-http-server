@@ -1,0 +1,10 @@
+[package]
+name = "gato-http-server"
+description = "Host HTTP Server for Gato Framework"
+authors = ["Pedro Soares <contato@pedrosoares.net>"]
+version = "0.0.1"
+edition = "2018"
+license = "MIT"
+
+[dependencies]
+gato-core = "0.5"
