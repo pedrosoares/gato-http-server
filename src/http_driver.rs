@@ -131,6 +131,8 @@ fn handle_client(mut stream: TcpStream) {
 
     let response = router_handler.handle(&mut request);
 
+    Logger::info(format!("{} [{}]: {}", stream.peer_addr().unwrap(), response.get_code(), protocol[1]).as_str());
+
     let mut headers_response = format!("HTTP/1.1 {} {}\r\nServer: Gato Framework\r\n", response.get_code(), code_to_text(response.get_code()));
 
 
