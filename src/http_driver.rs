@@ -151,7 +151,8 @@ fn handle_client(mut stream: TcpStream) {
 }
 
 pub fn start_server() {
-    let listener = TcpListener::bind("0.0.0.0:3333").unwrap();
+    let port = std::env::var("PORT").unwrap_or("3333".to_owned());
+    let listener = TcpListener::bind(format!("0.0.0.0:{}", port)).unwrap();
     // accept connections and process them, spawning a new thread for each one
     Logger::info("Server listening on port 3333");
     for stream in listener.incoming() {
