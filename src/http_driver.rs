@@ -1,8 +1,8 @@
-use std::thread;
+use std::{panic, thread};
 use std::net::{TcpListener, TcpStream, Shutdown};
 use std::io::{Read, Write};
 use std::collections::HashMap;
-use gato_core::kernel::{Logger, RequestBuilder, RouterHandler};
+use gato_core::kernel::{Logger, RequestBuilder, Response, RouterHandler};
 
 fn code_to_text(code: i32) -> String {
     match code {
@@ -120,16 +120,25 @@ fn handle_client(mut stream: TcpStream) {
 
     let headers = parse_header(header);
 
-    // Get RouterHandler Driver
-    let router_handler = RouterHandler::get_driver();
+    // This is used to prevent panics to kill this server
+    let response = panic::catch_unwind(|| {
+        // Get RouterHandler Driver
+        let router_handler = RouterHandler::get_driver();
+        // Build new Request
+        let mut request = RequestBuilder::new();
+        request.add_headers(headers);
+        request.add_body(body.to_string());
+        request.add_method(protocol[0].to_string());
+        request.add_uri(protocol[1].to_string());
+        // Handle Request on the Controller
+        let response = router_handler.handle(&mut request);
+        // Get the response back to the driver
+        response
+    });
 
-    let mut request = RequestBuilder::new();
-    request.add_headers(headers);
-    request.add_body(body.to_string());
-    request.add_method(protocol[0].to_string());
-    request.add_uri(protocol[1].to_string());
-
-    let response = router_handler.handle(&mut request);
+    let response = response.unwrap_or(
+        Response::new().status(500).raw("Internal Server Error")
+    );
 
     Logger::info(format!("{} [{}]: {}", stream.peer_addr().unwrap(), response.get_code(), protocol[1]).as_str());
 
@@ -142,8 +151,6 @@ fn handle_client(mut stream: TcpStream) {
 
     headers_response += format!("\r\n{}", response.get_body()).as_str();
 
-    //println!("response is:\n{}", headers_response);
-
     stream.write(headers_response.as_bytes()).unwrap();
     stream.flush().unwrap();
 
@@ -154,14 +161,20 @@ pub fn start_server() {
     let port = std::env::var("PORT").unwrap_or("3333".to_owned());
     let listener = TcpListener::bind(format!("0.0.0.0:{}", port)).unwrap();
     // accept connections and process them, spawning a new thread for each one
-    Logger::info("Server listening on port 3333");
+    Logger::info(format!("Server listening on port {}", port).as_str());
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
-                Logger::info(format!("New connection: {}", stream.peer_addr().unwrap()).as_str());
+                let address =  stream.peer_addr().unwrap().to_string();
+                Logger::info(format!("New connection: {}", address).as_str());
                 thread::spawn(move|| {
-                    // connection succeeded
-                    handle_client(stream)
+                    let client_result = panic::catch_unwind(|| {
+                        // connection succeeded
+                        handle_client(stream);
+                    });
+                    if client_result.is_err() {
+                        Logger::error(format!("Error on Client: {}", address).as_str());
+                    };
                 });
             }
             Err(e) => {
@@ -170,6 +183,7 @@ pub fn start_server() {
             }
         }
     }
+    Logger::info(format!("server is dead").as_str());
     // close the socket server
     drop(listener);
 }
